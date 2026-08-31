@@ -188,7 +188,10 @@ function renderShell() {
           <button data-mode="landscape" aria-pressed="false"><span>⌁</span>Landscape</button>
           <button data-mode="insights" aria-pressed="false"><span>▥</span>Insights</button>
         </nav>
-        <div class="topbar-meta"><span class="live-dot"></span><span>${followers.length.toLocaleString()} profiles mapped</span></div>
+        <div class="topbar-actions">
+          <button class="x402-banner" id="promptBanner" type="button"><b>Built with x402</b><span>One prompt ↗</span></button>
+          <div class="topbar-meta"><span class="live-dot"></span><span>${followers.length.toLocaleString()} profiles mapped</span></div>
+        </div>
       </header>
 
       <section class="hero-copy">
@@ -199,6 +202,10 @@ function renderShell() {
 
       <section class="graph-stage" id="graphStage" aria-label="Interactive follower graph">
         <canvas id="galaxyCanvas"></canvas>
+        <div class="tour-cue" id="tourCue" aria-hidden="true">
+          <span>Click for a tour</span>
+          <i></i>
+        </div>
         <div class="insights-view" id="insightsView"></div>
         <div class="graph-hint"><span>Drag to explore</span><i></i><span>Scroll to zoom</span></div>
         <div class="zoom-controls">
@@ -349,6 +356,9 @@ function escapeHTML(value) {
 
 function openDrawer(node) {
   selectedNode = node;
+  document.querySelector('.app-shell').classList.add('drawer-open');
+  document.querySelector('#tourCue')?.classList.add('dismissed');
+  document.querySelector('#detailDrawer').classList.remove('prompt-open');
   document.querySelector('#drawerContent').innerHTML = profileTemplate(node.profile);
   document.querySelector('#detailDrawer').classList.add('open');
   document.querySelector('#drawerScrim').classList.add('open');
@@ -357,8 +367,41 @@ function openDrawer(node) {
 
 function closeDrawer() {
   selectedNode = null;
+  document.querySelector('.app-shell').classList.remove('drawer-open');
   document.querySelector('#detailDrawer').classList.remove('open');
   document.querySelector('#drawerScrim').classList.remove('open');
+}
+
+async function openPromptDrawer() {
+  const drawer = document.querySelector('#detailDrawer');
+  const content = document.querySelector('#drawerContent');
+  document.querySelector('.app-shell').classList.add('drawer-open');
+  drawer.classList.add('open', 'prompt-open');
+  document.querySelector('#drawerScrim').classList.add('open');
+  content.innerHTML = '<p class="prompt-loading">Loading the one-shot prompt…</p>';
+  try {
+    const response = await fetch('/build-prompt.txt');
+    if (!response.ok) throw new Error('Prompt unavailable');
+    const prompt = await response.text();
+    content.innerHTML = `
+      <p class="drawer-kicker">BUILT WITH x402</p>
+      <h2>Give it to any agent.</h2>
+      <p class="prompt-intro">One prompt fetches the followers with x402, creates the CSV, and builds this experience.</p>
+      <div class="agent-row" aria-label="Compatible coding agents">
+        <span aria-label="Claude" title="Claude"><img src="https://cdn.simpleicons.org/claude/D97757" alt="Claude"></span>
+        <span aria-label="ChatGPT" title="ChatGPT"><img src="https://chatgpt.com/favicon.ico" alt="ChatGPT"></span>
+        <span aria-label="Nous Research Hermes" title="Nous Research Hermes"><img src="https://raw.githubusercontent.com/NousResearch/hermes-agent/main/apps/desktop/assets/icon.png" alt="Nous Research Hermes"></span>
+        <span aria-label="OpenClaw" title="OpenClaw"><img src="https://raw.githubusercontent.com/openclaw/openclaw/main/apps/ios/Sources/Assets.xcassets/AppIcon.appiconset/1024.png" alt="OpenClaw"></span>
+        <span aria-label="Cursor" title="Cursor"><img src="https://cdn.simpleicons.org/cursor/FFFFFF" alt="Cursor"></span>
+        <span aria-label="Grok" title="Grok"><img src="https://raw.githubusercontent.com/openclaw/openclaw/main/apps/ios/Sources/Assets.xcassets/ProviderIconXAI.imageset/ProviderIconXAI.svg" alt="Grok"></span>
+        <span aria-label="Gemini" title="Gemini"><img src="https://cdn.simpleicons.org/googlegemini/8E75B2" alt="Gemini"></span>
+        <span aria-label="GitHub Copilot" title="GitHub Copilot"><img src="https://cdn.simpleicons.org/githubcopilot/FFFFFF" alt="GitHub Copilot"></span>
+      </div>
+      <label class="prompt-box"><span>One-shot build prompt</span><textarea id="buildPrompt" readonly spellcheck="false">${escapeHTML(prompt.trim())}</textarea></label>
+      <button class="copy-prompt" id="copyPrompt" type="button"><span>□</span> Copy prompt</button>`;
+  } catch (error) {
+    content.innerHTML = `<p class="fatal-prompt">${escapeHTML(error.message)}. Open README.md to copy it.</p>`;
+  }
 }
 
 function focusNode(node) {
@@ -525,6 +568,18 @@ function setupGraph() {
   const ownerCore = new THREE.Mesh(new THREE.IcosahedronGeometry(23, 3), new THREE.MeshStandardMaterial({ color: 0xd1fae5, emissive: 0x1e7d5c, emissiveIntensity: 1.5, roughness: 0.24 }));
   const ownerRing = new THREE.Mesh(new THREE.TorusGeometry(38, .8, 12, 96), new THREE.MeshBasicMaterial({ color: 0x86efac, transparent: true, opacity: .52 }));
   ownerRing.rotation.x = 1.18;
+  const ownerTraceGroup = new THREE.Group();
+  const ownerTraceMint = new THREE.Mesh(
+    new THREE.TorusGeometry(42, 1.15, 8, 56, Math.PI * .68),
+    new THREE.MeshBasicMaterial({ color: 0x86efac, transparent: true, opacity: .92, toneMapped: false }),
+  );
+  const ownerTraceCyan = new THREE.Mesh(
+    new THREE.TorusGeometry(47, .72, 8, 52, Math.PI * .46),
+    new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: .82, toneMapped: false }),
+  );
+  ownerTraceMint.rotation.x = 1.08;
+  ownerTraceCyan.rotation.set(.62, .76, .15);
+  ownerTraceGroup.add(ownerTraceMint, ownerTraceCyan);
   const ownerHalo = new THREE.Mesh(new THREE.SphereGeometry(47, 24, 24), new THREE.MeshBasicMaterial({ color: 0x34d399, transparent: true, opacity: .035, side: THREE.BackSide }));
   const ownerPortraitMaterial = new THREE.SpriteMaterial({ alphaMap: portraitMask, alphaTest: .08, transparent: true, depthTest: false, depthWrite: false, toneMapped: false });
   const ownerPortrait = new THREE.Sprite(ownerPortraitMaterial);
@@ -535,7 +590,7 @@ function setupGraph() {
     ownerPortraitMaterial.map = texture;
     ownerPortraitMaterial.needsUpdate = true;
   });
-  owner.add(ownerCore, ownerRing, ownerHalo, ownerPortrait);
+  owner.add(ownerCore, ownerRing, ownerTraceGroup, ownerHalo, ownerPortrait);
   scene.add(owner);
 
   const starGeometry = new THREE.BufferGeometry();
@@ -577,9 +632,13 @@ function setupGraph() {
   const journeyDirection = new THREE.Vector3();
   const journeySide = new THREE.Vector3();
   const journeyCamera = new THREE.Vector3();
+  const ownerScreen = new THREE.Vector3();
+  const autoTooltipScreen = new THREE.Vector3();
   const journeyRoute = rankedNodes.slice(0, 22);
   const journey = { active: false, paused: false, segment: 0, progress: 0, lastTime: 0 };
+  const appShell = document.querySelector('.app-shell');
   const journeyHud = document.querySelector('#journeyHud');
+  const tourCue = document.querySelector('#tourCue');
   const journeyTarget = document.querySelector('#journeyTarget');
   const journeyState = document.querySelector('#journeyState');
   let cameraAnimating = false;
@@ -598,6 +657,7 @@ function setupGraph() {
 
   function startJourney() {
     setMode('galaxy');
+    document.querySelector('#tourCue')?.classList.add('dismissed');
     journey.active = true;
     journey.segment = 0;
     journey.progress = 0;
@@ -663,12 +723,14 @@ function setupGraph() {
     hoveredOwner = !hoveredNode && pickOwner(event);
     canvas.style.cursor = hoveredNode || hoveredOwner ? 'pointer' : 'grab';
     if (hoveredNode) {
+      tooltip.dataset.source = 'pointer';
       tooltip.innerHTML = `<img src="${hoveredNode.profile.profile_image_url}" alt="" referrerpolicy="no-referrer"><span class="tooltip-copy"><strong>${escapeHTML(hoveredNode.profile.name)}</strong><span>@${escapeHTML(hoveredNode.profile.username)} · ${compactNumber(hoveredNode.profile.followers)} followers</span></span>`;
       const rect = canvas.getBoundingClientRect();
       tooltip.style.left = `${event.clientX - rect.left}px`;
       tooltip.style.top = `${event.clientY - rect.top}px`;
       tooltip.classList.add('visible');
     } else if (hoveredOwner) {
+      tooltip.dataset.source = 'pointer';
       tooltip.innerHTML = `<img src="${OWNER.avatar}" alt="" referrerpolicy="no-referrer"><span class="tooltip-copy"><strong>${OWNER.name}</strong><span>@${OWNER.username} · Start popularity voyage</span></span>`;
       const rect = canvas.getBoundingClientRect();
       tooltip.style.left = `${event.clientX - rect.left}px`;
@@ -711,6 +773,7 @@ function setupGraph() {
 
   function frame(time) {
     animationFrame = requestAnimationFrame(frame);
+    let approachedNode = null;
     controls.enabled = activeMode !== 'insights';
     if (journey.active) controls.enabled = false;
     sphereMesh.visible = activeMode !== 'insights' && activeMode !== 'landscape';
@@ -719,7 +782,6 @@ function setupGraph() {
     owner.visible = activeMode === 'galaxy';
     landscapeGroup.visible = activeMode === 'landscape';
     stars.visible = activeMode !== 'insights';
-    hoverHalo.visible = Boolean(hoveredNode) && activeMode !== 'insights';
 
     if (journey.active) {
       const elapsed = Math.min(64, Math.max(0, time - journey.lastTime));
@@ -730,6 +792,7 @@ function setupGraph() {
         journey.segment = (journey.segment + 1) % journeyRoute.length;
       }
       const current = journeyRoute[journey.segment];
+      approachedNode = current;
       const previous = journey.segment === 0 ? null : journeyRoute[journey.segment - 1];
       if (previous) nodePoint(previous, journeyFrom); else journeyFrom.set(0, 0, 0);
       nodePoint(current, journeyTo);
@@ -755,17 +818,47 @@ function setupGraph() {
     camera.updateMatrixWorld();
     viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     cameraFrustum.setFromProjectionMatrix(viewProjection);
+    owner.updateWorldMatrix(true, false);
+    owner.getWorldPosition(ownerScreen).project(camera);
+    tourCue.style.left = `${(ownerScreen.x * .5 + .5) * stage.clientWidth}px`;
+    tourCue.style.top = `${(-ownerScreen.y * .5 + .5) * stage.clientHeight - 92}px`;
     const closeZoom = camera.position.distanceTo(controls.target) < 690;
+    appShell.classList.toggle('zoomed-in', closeZoom);
+    if (!approachedNode && closeZoom && activeMode !== 'insights') {
+      let nearestDistance = 145 * 145;
+      nodes.forEach((node) => {
+        if (!node.visible) return;
+        const dx = node.x - controls.target.x;
+        const dy = node.y - controls.target.y;
+        const dz = node.z - controls.target.z;
+        const distance = dx * dx + dy * dy + dz * dz;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          approachedNode = node;
+        }
+      });
+    }
+    const highlightedNode = hoveredNode || selectedNode || approachedNode;
+    hoverHalo.visible = Boolean(highlightedNode) && activeMode !== 'insights';
+    if ((!approachedNode || selectedNode) && !hoveredNode && tooltip.dataset.source === 'auto') {
+      tooltip.classList.remove('visible');
+      delete tooltip.dataset.source;
+      delete tooltip.dataset.profileId;
+    }
     owner.rotation.y += .003;
     ownerRing.rotation.z += .002;
+    ownerTraceMint.rotation.z += .018;
+    ownerTraceCyan.rotation.z -= .013;
+    ownerTraceGroup.rotation.y = Math.sin(time * .0008) * .22;
     ownerHalo.scale.setScalar(1 + Math.sin(time * .0018) * .045);
     stars.rotation.y = time * (journey.active && !journey.paused ? .000055 : .000012);
 
+    let autoTooltipShown = false;
     nodes.forEach((node, index) => {
       node.x += (node.targetX - node.x) * .022;
       node.y += (node.targetY - node.y) * .022;
       node.z += (node.targetZ - node.z) * .022;
-      const active = node === hoveredNode || node === selectedNode;
+      const active = node === highlightedNode || node === selectedNode;
       const hidden = !node.visible || activeMode === 'insights';
       const drift = activeMode === 'landscape' ? 0 : 2.8;
       dummy.position.set(
@@ -788,7 +881,7 @@ function setupGraph() {
       dummy.scale.setScalar(pickSize);
       dummy.updateMatrix();
       pickMesh.setMatrixAt(index, dummy.matrix);
-      if (node === hoveredNode) {
+      if (node === highlightedNode) {
         hoverHalo.position.copy(dummy.position);
         hoverHalo.scale.setScalar(node.radius * 1.95);
         hoverHalo.material.color.set(node.profile.topic.color);
@@ -797,13 +890,25 @@ function setupGraph() {
       }
 
       portraitPoint.set(node.renderX, node.renderY, node.renderZ);
+      if (node === approachedNode && !hoveredNode && !selectedNode && !hidden) {
+        autoTooltipShown = true;
+        autoTooltipScreen.copy(portraitPoint).project(camera);
+        if (tooltip.dataset.profileId !== node.profile.id || tooltip.dataset.source !== 'auto') {
+          tooltip.innerHTML = `<img src="${node.profile.profile_image_url}" alt="" referrerpolicy="no-referrer"><span class="tooltip-copy"><strong>${escapeHTML(node.profile.name)}</strong><span>@${escapeHTML(node.profile.username)} · ${compactNumber(node.profile.followers)} followers</span></span>`;
+          tooltip.dataset.profileId = node.profile.id;
+          tooltip.dataset.source = 'auto';
+        }
+        tooltip.style.left = `${(autoTooltipScreen.x * .5 + .5) * stage.clientWidth}px`;
+        tooltip.style.top = `${(-autoTooltipScreen.y * .5 + .5) * stage.clientHeight}px`;
+        tooltip.classList.add('visible');
+      }
       const modeLeader = activeMode === 'landscape' ? mountainPortraits.has(node) : popularPortraits.has(node);
       const zoomPortrait = closeZoom && cameraFrustum.containsPoint(portraitPoint);
-      const showPortrait = !hidden && (node === hoveredNode || modeLeader || zoomPortrait);
+      const showPortrait = !hidden && (node === highlightedNode || modeLeader || zoomPortrait);
       if (showPortrait) {
         const sprite = ensurePortrait(node);
         sprite.visible = true;
-        const portraitSize = Math.max(17, node.radius * (node === hoveredNode ? 3.25 : 2.65));
+        const portraitSize = Math.max(17, node.radius * (node === highlightedNode ? 3.25 : 2.65));
         if (activeMode === 'landscape') {
           sprite.position.set(node.renderX, node.renderY + node.radius * 2.45 + portraitSize * .46, node.renderZ + 2);
         } else {
@@ -811,11 +916,14 @@ function setupGraph() {
           sprite.position.copy(portraitPoint).addScaledVector(cameraDirection, node.radius * 1.12 + 1.5);
         }
         sprite.scale.setScalar(portraitSize);
-        sprite.material.opacity = node === hoveredNode ? 1 : .94;
+        sprite.material.opacity = node === highlightedNode ? 1 : .94;
       } else if (node.portraitSprite) {
         node.portraitSprite.visible = false;
       }
     });
+    if (approachedNode && !hoveredNode && !autoTooltipShown && tooltip.dataset.source === 'auto') {
+      tooltip.classList.remove('visible');
+    }
     sphereMesh.instanceMatrix.needsUpdate = true;
     peakMesh.instanceMatrix.needsUpdate = true;
     pickMesh.instanceMatrix.needsUpdate = true;
@@ -858,6 +966,20 @@ function bindUI() {
   });
   document.querySelector('#drawerClose').addEventListener('click', closeDrawer);
   document.querySelector('#drawerScrim').addEventListener('click', closeDrawer);
+  document.querySelector('#promptBanner').addEventListener('click', openPromptDrawer);
+  document.querySelector('#drawerContent').addEventListener('click', async (event) => {
+    const button = event.target.closest('#copyPrompt');
+    if (!button) return;
+    const textarea = document.querySelector('#buildPrompt');
+    try {
+      await navigator.clipboard.writeText(textarea.value);
+    } catch {
+      textarea.select();
+      document.execCommand('copy');
+    }
+    button.innerHTML = '<span>✓</span> Copied';
+    window.setTimeout(() => { button.innerHTML = '<span>□</span> Copy prompt'; }, 1800);
+  });
   document.querySelector('.mode-switch').addEventListener('click', (event) => {
     const button = event.target.closest('button[data-mode]');
     if (button) setMode(button.dataset.mode);

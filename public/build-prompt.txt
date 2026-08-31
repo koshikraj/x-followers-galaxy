@@ -1,0 +1,15 @@
+Create a complete, polished application called Audience Galaxy for an X/Twitter user. Work autonomously from setup through a verified production build.
+
+First install/run the twitsh CLI with `npx twitsh start`. Add and follow https://twit.sh/skill.md with x402, run `npx twitsh mode x402`, and inspect `npx twitsh endpoints` before fetching. Use any compatible Base x402 agent wallet already available—Coinbase, MetaMask, WDK, AgentCash, or another wallet—and fall back to the twitsh wallet if needed. Check `npx twitsh balance`, request Base USDC funding when necessary, and never expose or commit wallet secrets.
+
+Resolve the target username to its numeric X user ID. Use the current twit.sh followers endpoint with `npx twitsh fetch`, following every pagination cursor until all followers are collected. Preserve ID, username, name, bio, location, verification/protected state, follower/following/post counts, and profile image URL. Deduplicate by ID, validate the total, and write a correctly escaped `public/followers.csv`. Never include wallet or payment data.
+
+Build a lightweight Vite application with plain JavaScript, responsive CSS, and Three.js where useful. Load only the local CSV in the browser so viewing the app makes no paid calls. Create a dark mobile-responsive interface centered on the target user's portrait. Infer topic groups from names and bios, size profiles by popularity, and color them brightly by topic.
+
+Include switchable Galaxy, Bubbles, Popularity Landscape, and Insights views. Galaxy should be a 3D universe; Bubbles should cluster topic and popularity; Landscape should show reach as mountain peaks with leader portraits; Insights should summarize totals, verified share, reach tiers, topics, locations, and top profiles.
+
+Make every node easy to hover and click with generous invisible hit targets. Hover should enlarge the node, show a halo, lazily reveal its portrait, and show name, username, and followers. Keep portraits on the most popular nodes and populate visible portraits progressively when zoomed. Clicking opens a responsive detail drawer. Add search, topic and verification filters, orbit/zoom/reset controls, touch support, and graceful missing-image handling.
+
+Put the owner portrait in the center with rotating rings and an animated “Click for a tour” cue. Clicking it should launch a smooth guided space journey through the highest-reach profiles. Profiles must stay hoverable during motion. Clicking one pauses and opens details; clicking empty space resumes; an Exit Journey control returns to the overview. Add a restrained cockpit HUD, reticle, route status, and star motion. Dim the hero copy while profiles are open or the camera is zoomed in.
+
+Use efficient instanced rendering, lazy images, reduced-motion support, and responsive layouts. Verify colors, raycasting, hover, click, portraits, filters, modes, drawer behavior, zoom dimming, and journey pause/resume. Run the production build and fix all errors. Deliver the app, CSV, row count, local run commands, x402 workflow summary, and verification results. Never commit secrets, wallet files, node_modules, or build output.
