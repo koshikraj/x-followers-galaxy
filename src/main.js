@@ -35,6 +35,7 @@ let animationFrame = 0;
 let activeMode = 'galaxy';
 const bubbleCenters = new Map();
 let focus3DNode = null;
+let set3DModeView = null;
 
 const view = { x: 0, y: 0, scale: 1, targetX: 0, targetY: 0, targetScale: 1 };
 const pointer = { x: 0, y: 0, downX: 0, downY: 0, dragging: false, moved: false };
@@ -447,6 +448,7 @@ function setMode(mode) {
       targetScale: mode === 'bubbles' ? 0.85 : mode === 'landscape' ? 0.78 : 1,
     });
   }
+  if (set3DModeView) set3DModeView(mode);
 }
 
 function setupGraph() {
@@ -644,6 +646,27 @@ function setupGraph() {
   let cameraAnimating = false;
   let hoveredOwner = false;
   let pointerDown = { x: 0, y: 0 };
+  let initialFramingApplied = false;
+  let lastPhoneLayout = null;
+
+  function modeCamera(mode) {
+    const phone = stage.clientWidth <= 700;
+    const distance = phone
+      ? (mode === 'landscape' ? 1420 : mode === 'bubbles' ? 1340 : 1280)
+      : (mode === 'landscape' ? 1180 : mode === 'bubbles' ? 1080 : 1120);
+    return {
+      position: new THREE.Vector3(0, phone ? 0 : 40, distance),
+      look: new THREE.Vector3(0, mode === 'landscape' ? 18 : 0, 0),
+    };
+  }
+
+  set3DModeView = (mode) => {
+    if (journey.active || mode === 'insights') return;
+    const home = modeCamera(mode);
+    targetCamera.copy(home.position);
+    targetLook.copy(home.look);
+    cameraAnimating = true;
+  };
 
   function nodePoint(node, target) {
     return target.set(node?.renderX ?? node?.x ?? 0, node?.renderY ?? node?.y ?? 0, node?.renderZ ?? node?.z ?? 0);
@@ -673,8 +696,9 @@ function setupGraph() {
     journey.active = false;
     stage.classList.remove('journey-active');
     journeyHud.classList.remove('visible', 'paused');
-    targetCamera.set(0, 40, 1120);
-    targetLook.set(0, 0, 0);
+    const home = modeCamera('galaxy');
+    targetCamera.copy(home.position);
+    targetLook.copy(home.look);
     cameraAnimating = true;
   }
 
@@ -683,12 +707,28 @@ function setupGraph() {
     renderer.setSize(rect.width, rect.height, false);
     camera.aspect = rect.width / rect.height;
     camera.updateProjectionMatrix();
+    const phoneLayout = rect.width <= 700;
+    if (!initialFramingApplied || phoneLayout !== lastPhoneLayout) {
+      const home = modeCamera(activeMode);
+      camera.position.copy(home.position);
+      controls.target.copy(home.look);
+      camera.lookAt(home.look);
+      initialFramingApplied = true;
+      lastPhoneLayout = phoneLayout;
+    }
   }
 
   function updateMouse(event) {
     const rect = canvas.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  function positionTooltip(x, y) {
+    const width = tooltip.offsetWidth || Math.min(230, stage.clientWidth - 24);
+    const height = tooltip.offsetHeight || 58;
+    tooltip.style.left = `${Math.max(0, Math.min(x, stage.clientWidth - width - 16))}px`;
+    tooltip.style.top = `${Math.max(height + 14, Math.min(y, stage.clientHeight - 6))}px`;
   }
 
   function pickNode(event) {
@@ -726,16 +766,14 @@ function setupGraph() {
       tooltip.dataset.source = 'pointer';
       tooltip.innerHTML = `<img src="${hoveredNode.profile.profile_image_url}" alt="" referrerpolicy="no-referrer"><span class="tooltip-copy"><strong>${escapeHTML(hoveredNode.profile.name)}</strong><span>@${escapeHTML(hoveredNode.profile.username)} · ${compactNumber(hoveredNode.profile.followers)} followers</span></span>`;
       const rect = canvas.getBoundingClientRect();
-      tooltip.style.left = `${event.clientX - rect.left}px`;
-      tooltip.style.top = `${event.clientY - rect.top}px`;
       tooltip.classList.add('visible');
+      positionTooltip(event.clientX - rect.left, event.clientY - rect.top);
     } else if (hoveredOwner) {
       tooltip.dataset.source = 'pointer';
       tooltip.innerHTML = `<img src="${OWNER.avatar}" alt="" referrerpolicy="no-referrer"><span class="tooltip-copy"><strong>${OWNER.name}</strong><span>@${OWNER.username} · Start popularity voyage</span></span>`;
       const rect = canvas.getBoundingClientRect();
-      tooltip.style.left = `${event.clientX - rect.left}px`;
-      tooltip.style.top = `${event.clientY - rect.top}px`;
       tooltip.classList.add('visible');
+      positionTooltip(event.clientX - rect.left, event.clientY - rect.top);
     } else tooltip.classList.remove('visible');
   });
   canvas.addEventListener('pointerup', (event) => {
@@ -759,8 +797,9 @@ function setupGraph() {
     const action = event.target.dataset.zoom;
     if (!action) return;
     if (action === 'reset') {
-      targetCamera.set(0, 40, 1120);
-      targetLook.set(0, 0, 0);
+      const home = modeCamera(activeMode);
+      targetCamera.copy(home.position);
+      targetLook.copy(home.look);
       cameraAnimating = true;
       return;
     }
@@ -802,10 +841,11 @@ function setupGraph() {
       if (journeyDirection.lengthSq() < 1) journeyDirection.set(0, 0, -1);
       journeyDirection.normalize();
       journeySide.crossVectors(journeyDirection, camera.up).normalize();
+      const phoneJourney = stage.clientWidth <= 700;
       journeyCamera.copy(journeyLook)
-        .addScaledVector(journeyDirection, -145)
-        .addScaledVector(journeySide, Math.sin(journey.progress * Math.PI) * 52);
-      journeyCamera.y += 34 + Math.sin(time * .0014) * 8;
+        .addScaledVector(journeyDirection, phoneJourney ? -235 : -145)
+        .addScaledVector(journeySide, Math.sin(journey.progress * Math.PI) * (phoneJourney ? 28 : 52));
+      journeyCamera.y += (phoneJourney ? 20 : 34) + Math.sin(time * .0014) * (phoneJourney ? 4 : 8);
       camera.position.lerp(journeyCamera, .045);
       controls.target.lerp(journeyLook, .075);
       journeyTarget.textContent = `${journey.paused ? 'Paused at' : 'Approaching'} ${current.profile.name} · ${compactNumber(current.profile.followers)}`;
@@ -822,6 +862,8 @@ function setupGraph() {
     owner.getWorldPosition(ownerScreen).project(camera);
     tourCue.style.left = `${(ownerScreen.x * .5 + .5) * stage.clientWidth}px`;
     tourCue.style.top = `${(-ownerScreen.y * .5 + .5) * stage.clientHeight - 92}px`;
+    canvas.dataset.ownerScreenX = String(Math.round((ownerScreen.x * .5 + .5) * stage.clientWidth));
+    canvas.dataset.ownerScreenY = String(Math.round((-ownerScreen.y * .5 + .5) * stage.clientHeight));
     const closeZoom = camera.position.distanceTo(controls.target) < 690;
     appShell.classList.toggle('zoomed-in', closeZoom);
     if (!approachedNode && closeZoom && activeMode !== 'insights') {
@@ -898,9 +940,11 @@ function setupGraph() {
           tooltip.dataset.profileId = node.profile.id;
           tooltip.dataset.source = 'auto';
         }
-        tooltip.style.left = `${(autoTooltipScreen.x * .5 + .5) * stage.clientWidth}px`;
-        tooltip.style.top = `${(-autoTooltipScreen.y * .5 + .5) * stage.clientHeight}px`;
         tooltip.classList.add('visible');
+        positionTooltip(
+          (autoTooltipScreen.x * .5 + .5) * stage.clientWidth,
+          (-autoTooltipScreen.y * .5 + .5) * stage.clientHeight,
+        );
       }
       const modeLeader = activeMode === 'landscape' ? mountainPortraits.has(node) : popularPortraits.has(node);
       const zoomPortrait = closeZoom && cameraFrustum.containsPoint(portraitPoint);
