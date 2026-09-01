@@ -56,6 +56,9 @@ body::before {
 .x402-banner b { color: #a7f3d0; font-weight: 500; }
 .x402-banner span { padding-left: 9px; border-left: 1px solid rgba(167,243,208,.15); }
 .x402-banner:hover { border-color: rgba(134,239,172,.5); color: #d9fbe8; box-shadow: 0 0 20px rgba(52,211,153,.08); }
+.repo-link { display: flex; align-items: center; gap: 6px; height: 31px; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; color: #769488; text-decoration: none; font: 8px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .06em; }
+.repo-link svg { width: 14px; height: 14px; fill: currentColor; }
+.repo-link:hover { color: #d9fbe8; border-color: rgba(134,239,172,.35); background: rgba(134,239,172,.05); }
 @property --x402-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes x402-border-orbit { to { --x402-angle: 360deg; } }
 .live-dot { width: 6px; height: 6px; background: var(--mint); border-radius: 50%; box-shadow: 0 0 9px var(--mint); }
@@ -277,6 +280,8 @@ h1 em { font-family: 'Playfair Display', serif; color: var(--mint); font-weight:
   .topbar-actions { gap: 7px; }
   .x402-banner span { display: none; }
   .x402-banner { height: 29px; padding: 0 7px; font-size: 7px; }
+  .repo-link { width: 29px; height: 29px; padding: 0; justify-content: center; }
+  .repo-link span { display: none; }
   .mode-switch { position: static; flex: 0 1 auto; transform: none; margin-left: auto; padding: 3px; }
   .mode-switch button { width: clamp(29px, 8vw, 34px); padding: 0; justify-content: center; }
   .mode-switch button span { font-size: 13px; }
