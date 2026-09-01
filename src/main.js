@@ -36,9 +36,152 @@ let activeMode = 'galaxy';
 const bubbleCenters = new Map();
 let focus3DNode = null;
 let set3DModeView = null;
+let insightsTransitionTimer = 0;
 
 const view = { x: 0, y: 0, scale: 1, targetX: 0, targetY: 0, targetScale: 1 };
 const pointer = { x: 0, y: 0, downX: 0, downY: 0, dragging: false, moved: false };
+
+const soundscape = {
+  enabled: false,
+  context: null,
+  master: null,
+  travelGain: null,
+  travelling: false,
+  lastHover: 0,
+  ensure() {
+    if (this.context) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    this.context = new AudioContext();
+    this.master = this.context.createGain();
+    this.master.gain.value = 0;
+    this.master.connect(this.context.destination);
+
+    const filter = this.context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 330;
+    filter.Q.value = .7;
+    filter.connect(this.master);
+    const droneGain = this.context.createGain();
+    droneGain.gain.value = .028;
+    droneGain.connect(filter);
+    [43.65, 65.41, 87.31].forEach((frequency, index) => {
+      const oscillator = this.context.createOscillator();
+      const gain = this.context.createGain();
+      oscillator.type = index === 1 ? 'sine' : 'triangle';
+      oscillator.frequency.value = frequency;
+      gain.gain.value = [1, .42, .15][index];
+      oscillator.connect(gain).connect(droneGain);
+      oscillator.start();
+    });
+    const gravityLfo = this.context.createOscillator();
+    const gravityDepth = this.context.createGain();
+    gravityLfo.frequency.value = .075;
+    gravityDepth.gain.value = .012;
+    gravityLfo.connect(gravityDepth).connect(droneGain.gain);
+    gravityLfo.start();
+
+    const noiseLength = this.context.sampleRate * 3;
+    const noiseBuffer = this.context.createBuffer(1, noiseLength, this.context.sampleRate);
+    const noise = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < noise.length; i += 1) noise[i] = (Math.random() * 2 - 1) * (1 - i / noise.length * .12);
+    const noiseSource = this.context.createBufferSource();
+    const noiseFilter = this.context.createBiquadFilter();
+    const noiseGain = this.context.createGain();
+    noiseSource.buffer = noiseBuffer;
+    noiseSource.loop = true;
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.value = 760;
+    noiseFilter.Q.value = .28;
+    noiseGain.gain.value = .006;
+    noiseSource.connect(noiseFilter).connect(noiseGain).connect(this.master);
+    noiseSource.start();
+
+    // A resonant, shell-like wash that only rises during guided travel.
+    this.travelGain = this.context.createGain();
+    this.travelGain.gain.value = this.travelling ? .055 : 0;
+    this.travelGain.connect(this.master);
+    const swellGain = this.context.createGain();
+    swellGain.gain.value = .58;
+    swellGain.connect(this.travelGain);
+    const oceanSource = this.context.createBufferSource();
+    const oceanFilter = this.context.createBiquadFilter();
+    oceanSource.buffer = noiseBuffer;
+    oceanSource.loop = true;
+    oceanFilter.type = 'bandpass';
+    oceanFilter.frequency.value = 470;
+    oceanFilter.Q.value = .62;
+    oceanSource.connect(oceanFilter).connect(swellGain);
+    oceanSource.start();
+    [92.5, 138.75].forEach((frequency, index) => {
+      const hum = this.context.createOscillator();
+      const humGain = this.context.createGain();
+      hum.type = 'sine';
+      hum.frequency.value = frequency;
+      humGain.gain.value = index ? .12 : .2;
+      hum.connect(humGain).connect(swellGain);
+      hum.start();
+    });
+    const swellLfo = this.context.createOscillator();
+    const swellDepth = this.context.createGain();
+    swellLfo.frequency.value = .115;
+    swellDepth.gain.value = .34;
+    swellLfo.connect(swellDepth).connect(swellGain.gain);
+    swellLfo.start();
+    const shellLfo = this.context.createOscillator();
+    const shellDepth = this.context.createGain();
+    shellLfo.frequency.value = .047;
+    shellDepth.gain.value = 180;
+    shellLfo.connect(shellDepth).connect(oceanFilter.frequency);
+    shellLfo.start();
+  },
+  async setEnabled(enabled) {
+    this.ensure();
+    if (!this.context) return false;
+    this.enabled = enabled;
+    if (enabled) await this.context.resume();
+    const now = this.context.currentTime;
+    this.master.gain.cancelScheduledValues(now);
+    this.master.gain.setTargetAtTime(enabled ? .62 : 0, now, enabled ? .8 : .035);
+    localStorage.setItem('audience-galaxy-sound', enabled ? 'on' : 'off');
+    return enabled;
+  },
+  tone(frequency, duration = .12, volume = .07, type = 'sine', endFrequency = frequency) {
+    if (!this.enabled || !this.context) return;
+    const now = this.context.currentTime;
+    const oscillator = this.context.createOscillator();
+    const gain = this.context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), now + duration);
+    gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + .012);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
+    oscillator.connect(gain).connect(this.master);
+    oscillator.start(now);
+    oscillator.stop(now + duration + .02);
+  },
+  hover(profile) {
+    const now = performance.now();
+    if (now - this.lastHover < 85) return;
+    this.lastHover = now;
+    this.tone(340 + profile.percentile * 2.2, .1, .045, 'sine', 410 + profile.percentile * 2.4);
+  },
+  click() { this.tone(210, .16, .075, 'triangle', 390); },
+  setTravel(active) {
+    this.travelling = active;
+    if (!this.context || !this.travelGain) return;
+    const now = this.context.currentTime;
+    this.travelGain.gain.cancelScheduledValues(now);
+    this.travelGain.gain.setTargetAtTime(active ? .055 : 0, now, active ? 1.2 : .32);
+  },
+  zoom(inward) { this.tone(inward ? 150 : 300, .24, .055, 'sine', inward ? 320 : 145); },
+  approach(profile) { this.tone(120 + profile.percentile, .5, .035, 'sine', 210 + profile.percentile * 1.5); },
+  launch() {
+    this.tone(62, 1.2, .1, 'sawtooth', 520);
+    window.setTimeout(() => this.tone(330, .9, .055, 'sine', 880), 180);
+  },
+};
 
 function parseCSV(text) {
   const rows = [];
@@ -195,6 +338,7 @@ function renderShell() {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.87c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.57 9.57 0 0 1 12 6.82a9.5 9.5 0 0 1 2.5.34c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"></path></svg>
             <span>GitHub</span>
           </a>
+          <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="false" aria-label="Enable space sound"><span>◌</span><b>Sound off</b></button>
           <div class="topbar-meta"><span class="live-dot"></span><span>${followers.length.toLocaleString()} profiles mapped</span></div>
         </div>
       </header>
@@ -323,7 +467,7 @@ function renderInsights(data = followers) {
         </article>
         <article class="insight-card leaders-card">
           <header><span>High-gravity profiles</span><small>Click to inspect</small></header>
-          <div class="leader-list">${topProfiles.map((profile, index) => `<button data-profile-id="${profile.id}"><b>${String(index + 1).padStart(2, '0')}</b><img src="${profile.profile_image_url}" alt="" referrerpolicy="no-referrer"><span><strong>${escapeHTML(profile.name)}</strong><small>@${escapeHTML(profile.username)}</small></span><em>${compactNumber(profile.followers)}</em></button>`).join('')}</div>
+          <div class="leader-list">${topProfiles.map((profile, index) => `<button data-profile-id="${profile.id}" style="--row:${index}"><b>${String(index + 1).padStart(2, '0')}</b><img src="${profile.profile_image_url}" alt="" referrerpolicy="no-referrer"><span><strong>${escapeHTML(profile.name)}</strong><small>@${escapeHTML(profile.username)}</small></span><em>${compactNumber(profile.followers)}</em></button>`).join('')}</div>
         </article>
       </div>
     </div>`;
@@ -434,7 +578,16 @@ function applyFilters() {
 
 function setMode(mode) {
   activeMode = mode;
-  document.querySelector('.app-shell').dataset.mode = mode;
+  const shell = document.querySelector('.app-shell');
+  shell.dataset.mode = mode;
+  window.clearTimeout(insightsTransitionTimer);
+  shell.classList.remove('insights-entering');
+  if (mode === 'insights') {
+    // Force a style boundary so the staggered reveal replays on every visit.
+    void shell.offsetWidth;
+    shell.classList.add('insights-entering');
+    insightsTransitionTimer = window.setTimeout(() => shell.classList.remove('insights-entering'), 1250);
+  }
   document.querySelectorAll('.mode-switch button').forEach((button) => {
     const active = button.dataset.mode === mode;
     button.classList.toggle('active', active);
@@ -652,6 +805,7 @@ function setupGraph() {
   let pointerDown = { x: 0, y: 0 };
   let initialFramingApplied = false;
   let lastPhoneLayout = null;
+  let lastApproachedNode = null;
 
   function modeCamera(mode) {
     const phone = stage.clientWidth <= 700;
@@ -678,6 +832,7 @@ function setupGraph() {
 
   function setJourneyPaused(paused) {
     journey.paused = paused;
+    soundscape.setTravel(journey.active && !paused);
     journeyState.textContent = paused ? 'Journey paused · click empty space to continue' : 'Click a profile to pause · click space to continue';
     journeyHud.classList.toggle('paused', paused);
   }
@@ -694,10 +849,12 @@ function setupGraph() {
     stage.classList.add('journey-active');
     journeyHud.classList.add('visible');
     journeyTarget.textContent = `Approaching ${journeyRoute[0].profile.name}`;
+    soundscape.launch();
   }
 
   function stopJourney() {
     journey.active = false;
+    soundscape.setTravel(false);
     stage.classList.remove('journey-active');
     journeyHud.classList.remove('visible', 'paused');
     const home = modeCamera('galaxy');
@@ -763,7 +920,9 @@ function setupGraph() {
       tooltip.classList.remove('visible');
       return;
     }
-    hoveredNode = pickNode(event);
+    const nextHoveredNode = pickNode(event);
+    if (nextHoveredNode && nextHoveredNode !== hoveredNode) soundscape.hover(nextHoveredNode.profile);
+    hoveredNode = nextHoveredNode;
     hoveredOwner = !hoveredNode && pickOwner(event);
     canvas.style.cursor = hoveredNode || hoveredOwner ? 'pointer' : 'grab';
     if (hoveredNode) {
@@ -784,9 +943,11 @@ function setupGraph() {
     if (Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) < 5) {
       const node = pickNode(event);
       if (node) {
+        soundscape.click();
         if (journey.active) setJourneyPaused(true);
         openDrawer(node);
       } else if (pickOwner(event)) {
+        soundscape.click();
         startJourney();
       } else if (journey.active) {
         setJourneyPaused(false);
@@ -800,6 +961,7 @@ function setupGraph() {
   document.querySelector('.zoom-controls').addEventListener('click', (event) => {
     const action = event.target.dataset.zoom;
     if (!action) return;
+    soundscape.zoom(action === 'in');
     if (action === 'reset') {
       const home = modeCamera(activeMode);
       targetCamera.copy(home.position);
@@ -885,6 +1047,8 @@ function setupGraph() {
       });
     }
     const highlightedNode = hoveredNode || selectedNode || approachedNode;
+    if (approachedNode && approachedNode !== lastApproachedNode && !hoveredNode) soundscape.approach(approachedNode.profile);
+    lastApproachedNode = approachedNode;
     hoverHalo.visible = Boolean(highlightedNode) && activeMode !== 'insights';
     if ((!approachedNode || selectedNode) && !hoveredNode && tooltip.dataset.source === 'auto') {
       tooltip.classList.remove('visible');
@@ -999,8 +1163,11 @@ function setupGraph() {
 
 function bindUI() {
   const search = document.querySelector('#searchInput');
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('button, a') && !event.target.closest('#soundToggle')) soundscape.click();
+  });
   search.addEventListener('input', applyFilters);
-  document.querySelector('#topicFilter').addEventListener('change', applyFilters);
+  document.querySelector('#topicFilter').addEventListener('change', () => { soundscape.click(); applyFilters(); });
   document.querySelector('#verifiedFilter').addEventListener('click', (event) => {
     const button = event.currentTarget;
     button.setAttribute('aria-pressed', button.getAttribute('aria-pressed') !== 'true');
@@ -1015,6 +1182,14 @@ function bindUI() {
   document.querySelector('#drawerClose').addEventListener('click', closeDrawer);
   document.querySelector('#drawerScrim').addEventListener('click', closeDrawer);
   document.querySelector('#promptBanner').addEventListener('click', openPromptDrawer);
+  const soundButton = document.querySelector('#soundToggle');
+  soundButton.addEventListener('click', async () => {
+    const enabled = await soundscape.setEnabled(!soundscape.enabled);
+    soundButton.setAttribute('aria-pressed', String(enabled));
+    soundButton.setAttribute('aria-label', enabled ? 'Disable space sound' : 'Enable space sound');
+    soundButton.innerHTML = `<span>${enabled ? '◉' : '◌'}</span><b>Sound ${enabled ? 'on' : 'off'}</b>`;
+    if (enabled) soundscape.click();
+  });
   document.querySelector('#drawerContent').addEventListener('click', async (event) => {
     const button = event.target.closest('#copyPrompt');
     if (!button) return;
